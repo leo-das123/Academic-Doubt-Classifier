@@ -1,95 +1,139 @@
+"""
+Knowledge Base Builder
+
+Builds the complete semantic knowledge base
+used by the Academic Doubt Classifier.
+
+Pipeline
+--------
+Academic PDFs
+        ↓
+PDF Processing
+        ↓
+Knowledge Chunks
+        ↓
+Embedding Generation
+        ↓
+FAISS Index Creation
+        ↓
+Save Vector Database
+
+Run
+
+python -m app.indexing.build_index
+"""
+
 from pathlib import Path
+import logging
+
+from app.config import (
+    PDF_DIRECTORY,
+    VECTOR_DB_PATH
+)
 
 from app.indexing.pdf_processor import PDFProcessor
-from app.core.embeddings import embedding_model
+from app.core.embeddings import EmbeddingService
 from app.core.vector_store import VectorStore
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(message)s"
+)
+
+logger = logging.getLogger(__name__)
 
 
 class IndexBuilder:
     """
-    Builds the complete Academic Knowledge Base.
-
-    Pipeline
-
-    Academic PDFs
-            │
-            ▼
-      PDF Processing
-            │
-            ▼
-         Chunking
-            │
-            ▼
-      Metadata Creation
-            │
-            ▼
-     Embedding Generation
-            │
-            ▼
-       FAISS Index Build
-            │
-            ▼
-      Save Vector Database
+    Offline Knowledge Base Builder.
     """
 
     def __init__(self):
 
-        self.pdf_folder = Path("app/data/pdfs")
+        self.pdf_directory = Path(PDF_DIRECTORY)
 
-        self.pdf_processor = PDFProcessor()
+        self.processor = PDFProcessor()
 
         self.vector_store = VectorStore()
 
-    # ==================================================
+    # =====================================================
     # Public Method
-    # ==================================================
+    # =====================================================
 
     def build(self):
 
+        logger.info("=" * 70)
+        logger.info("Building Academic Knowledge Base")
+        logger.info("=" * 70)
+
         pdf_files = self._load_pdfs()
 
-        knowledge_chunks = self._process_pdfs(pdf_files)
+        chunks = self._process_pdfs(pdf_files)
 
-        embeddings = self._generate_embeddings(
-            knowledge_chunks
-        )
+        embeddings = self._generate_embeddings(chunks)
 
         self._build_vector_database(
             embeddings,
-            knowledge_chunks
+            chunks
         )
 
         self._print_summary(
             pdf_files,
-            knowledge_chunks,
+            chunks,
             embeddings
         )
 
-        return knowledge_chunks, embeddings
+        logger.info("\nKnowledge Base Ready Successfully.\n")
 
-    # ==================================================
+    # =====================================================
     # Load PDFs
-    # ==================================================
+    # =====================================================
 
     def _load_pdfs(self):
 
+        if not self.pdf_directory.exists():
+
+            raise FileNotFoundError(
+
+                f"PDF directory not found: {self.pdf_directory}"
+
+            )
+
         pdf_files = sorted(
-            self.pdf_folder.glob("*.pdf")
+
+            self.pdf_directory.glob("*.pdf")
+
         )
 
-        print("\n" + "=" * 70)
-        print("Loading Academic PDFs...")
-        print("=" * 70)
+        if not pdf_files:
 
-        print(f"Found {len(pdf_files)} PDF(s)\n")
+            raise FileNotFoundError(
+
+                "No PDF files found."
+
+            )
+
+        logger.info(
+
+            "Found %d PDF(s).\n",
+
+            len(pdf_files)
+
+        )
 
         return pdf_files
 
-    # ==================================================
+    # =====================================================
     # Process PDFs
-    # ==================================================
+    # =====================================================
 
-    def _process_pdfs(self, pdf_files):
+    def _process_pdfs(
+
+        self,
+
+        pdf_files
+
+    ):
 
         all_chunks = []
 
@@ -97,145 +141,220 @@ class IndexBuilder:
 
         for pdf in pdf_files:
 
-            subject = pdf.stem.replace("_", " ")
+            logger.info("-" * 70)
 
-            print("-" * 70)
-            print(f"Processing PDF : {pdf.name}")
-            print(f"Subject        : {subject}")
-            print("-" * 70)
+            logger.info(
 
-            chunks = self.pdf_processor.process(pdf)
+                "Processing %s",
+
+                pdf.name
+
+            )
+
+            chunks = self.processor.process(pdf)
 
             for chunk in chunks:
 
                 chunk["id"] = chunk_id
 
-                chunk["subject"] = subject
-
-                chunk["source_file"] = pdf.name
-
-                chunk["chunk_length"] = len(
-                    chunk["content"]
-                )
-
                 chunk_id += 1
 
-            print(f"Chunks Created : {len(chunks)}\n")
+            logger.info(
+
+                "Chunks Created : %d",
+
+                len(chunks)
+
+            )
 
             all_chunks.extend(chunks)
 
+        logger.info("-" * 70)
+
+        logger.info(
+
+            "Total Chunks : %d\n",
+
+            len(all_chunks)
+
+        )
+
         return all_chunks
 
-    # ==================================================
+    # =====================================================
     # Generate Embeddings
-    # ==================================================
+    # =====================================================
 
     def _generate_embeddings(
+
         self,
-        knowledge_chunks
+
+        chunks
+
     ):
 
-        print("=" * 70)
-        print("Generating Embeddings...")
-        print("=" * 70)
+        logger.info("=" * 70)
 
-        embeddings = []
+        logger.info("Generating Embeddings")
 
-        total = len(knowledge_chunks)
+        logger.info("=" * 70)
 
-        for index, chunk in enumerate(
-            knowledge_chunks,
-            start=1
-        ):
+        texts = [
 
-            embedding = embedding_model.generate(
-                chunk["content"]
-            )
+            chunk["text"]
 
-            embeddings.append(embedding)
+            for chunk in chunks
 
-            if index % 100 == 0 or index == total:
+        ]
 
-                print(
-                    f"Processed {index}/{total} chunks"
-                )
+        embeddings = EmbeddingService.generate_batch(
 
-        print("\nEmbedding Generation Completed.\n")
+            texts
+
+        )
+
+        logger.info(
+
+            "Generated %d embeddings.\n",
+
+            len(embeddings)
+
+        )
 
         return embeddings
 
-    # ==================================================
+    # =====================================================
     # Build Vector Database
-    # ==================================================
+    # =====================================================
 
     def _build_vector_database(
+
         self,
+
         embeddings,
+
         metadata
+
     ):
 
-        print("=" * 70)
-        print("Building Vector Database...")
-        print("=" * 70)
+        logger.info("=" * 70)
+
+        logger.info("Building FAISS Index")
+
+        logger.info("=" * 70)
 
         self.vector_store.create_index(
 
-            embeddings=embeddings,
+            embeddings,
 
-            metadata=metadata
+            metadata
 
         )
 
         self.vector_store.save()
 
-        print("Vector Database Saved Successfully.\n")
+        logger.info(
 
-    # ==================================================
-    # Print Summary
-    # ==================================================
+            "Vector database saved to:\n%s\n",
+
+            VECTOR_DB_PATH
+
+        )
+
+    # =====================================================
+    # Summary
+    # =====================================================
 
     def _print_summary(
+
         self,
+
         pdf_files,
-        knowledge_chunks,
+
+        chunks,
+
         embeddings
+
     ):
 
         subjects = sorted({
 
             chunk["subject"]
 
-            for chunk in knowledge_chunks
+            for chunk in chunks
 
         })
 
-        print("=" * 70)
-        print("Knowledge Base Summary")
-        print("=" * 70)
+        logger.info("=" * 70)
 
-        print(f"PDFs Indexed        : {len(pdf_files)}")
-        print(f"Subjects            : {len(subjects)}")
-        print(f"Chunks Created      : {len(knowledge_chunks)}")
-        print(f"Embeddings Created  : {len(embeddings)}")
+        logger.info("Knowledge Base Summary")
 
-        if embeddings:
+        logger.info("=" * 70)
 
-            print(
-                f"Vector Dimension    : {len(embeddings[0])}"
-            )
+        logger.info(
 
-        print(
-            f"Knowledge Subjects  : {', '.join(subjects)}"
+            "PDFs Indexed       : %d",
+
+            len(pdf_files)
+
         )
 
-        print("=" * 70)
+        logger.info(
 
-        print("\nKnowledge Base Ready Successfully.\n")
+            "Subjects           : %d",
+
+            len(subjects)
+
+        )
+
+        logger.info(
+
+            "Knowledge Chunks   : %d",
+
+            len(chunks)
+
+        )
+
+        logger.info(
+
+            "Embeddings         : %d",
+
+            len(embeddings)
+
+        )
+
+        if len(embeddings):
+
+            logger.info(
+
+                "Vector Dimension   : %d",
+
+                len(embeddings[0])
+
+            )
+
+        logger.info(
+
+            "Vector Database    : %s",
+
+            VECTOR_DB_PATH
+
+        )
+
+        logger.info(
+
+            "Subjects Indexed   : %s",
+
+            ", ".join(subjects)
+
+        )
+
+        logger.info("=" * 70)
 
 
-# ==================================================
-# Testing
-# ==================================================
+# =====================================================
+# Entry Point
+# =====================================================
 
 if __name__ == "__main__":
 

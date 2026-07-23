@@ -1,148 +1,210 @@
+"""
+Academic Classifier
+
+Main orchestration pipeline for the
+Academic Doubt Classifier.
+
+Pipeline
+--------
+Question
+    ↓
+Preprocessing
+    ↓
+Semantic Retrieval
+    ↓
+Context Building
+    ↓
+LLM Classification
+    ↓
+Confidence Scoring
+    ↓
+Structured API Response
+"""
+
+import logging
+
+from app.config import SIMILARITY_THRESHOLD
+
 from app.core.preprocess import TextPreprocessor
-from app.core.embeddings import embedding_model
-from app.core.vector_store import VectorStore
+from app.core.retriever import Retriever
+from app.core.context_builder import ContextBuilder
 from app.core.llm_classifier import llm_classifier
+from app.core.retrieval_scorer import retrieval_scorer
 
-from app.config import TOP_K
-
-
-# --------------------------------------------------
-# Load Vector Database Once
-# --------------------------------------------------
-
-vector_store = VectorStore()
-vector_store.load()
+logger = logging.getLogger(__name__)
 
 
 class AcademicClassifier:
     """
-    Main orchestration pipeline for
-    Academic Doubt Classification.
-
-    Pipeline:
-
-    Question
-        ↓
-    Preprocessing
-        ↓
-    Embedding
-        ↓
-    Semantic Search (FAISS)
-        ↓
-    LLM Classification
-        ↓
-    API Response
+    Coordinates the complete academic
+    doubt classification pipeline.
     """
 
-    @staticmethod
-    def classify(question: str):
+    def __init__(self):
 
-        # --------------------------------------------------
-        # Step 1 : Preserve Original Question
-        # --------------------------------------------------
+        self.retriever = Retriever()
+
+    # ======================================================
+    # Public API
+    # ======================================================
+
+    def classify(
+        self,
+        question: str
+    ):
+        """
+        Classify an academic doubt.
+        """
+
+        # ----------------------------------------------
+        # Preserve Original Question
+        # ----------------------------------------------
 
         original_question = question
 
-        # --------------------------------------------------
-        # Step 2 : Preprocess Question
-        # --------------------------------------------------
+        # ----------------------------------------------
+        # Preprocess
+        # ----------------------------------------------
 
         cleaned_question = TextPreprocessor.clean(
             original_question
         )
 
-        # --------------------------------------------------
-        # Step 3 : Generate Embedding
-        # --------------------------------------------------
+        # ----------------------------------------------
+        # Retrieve Knowledge
+        # ----------------------------------------------
 
-        question_embedding = embedding_model.generate(
+        retrieval_result = self.retriever.retrieve(
             cleaned_question
         )
 
-        # --------------------------------------------------
-        # Step 4 : Semantic Search
-        # --------------------------------------------------
+        retrieved_chunks = retrieval_result["retrieved"]
 
-        search_results = vector_store.search(
+        accepted_chunks = retrieval_result["accepted"]
 
-            query_embedding=question_embedding,
+        # ----------------------------------------------
+        # Build Context
+        # ----------------------------------------------
 
-            top_k=TOP_K
-
+        context = ContextBuilder.build(
+            accepted_chunks
         )
 
-        # --------------------------------------------------
-        # Step 5 : LLM Classification
-        # --------------------------------------------------
-
-        classification = llm_classifier.classify(
+        prompt = ContextBuilder.build_prompt(
 
             question=original_question,
 
-            retrieved_chunks=search_results
+            context=context
 
         )
 
-        # --------------------------------------------------
-        # Debug Information
-        # --------------------------------------------------
+        # ----------------------------------------------
+        # LLM Classification
+        # ----------------------------------------------
 
-        print("\n" + "=" * 80)
-        print("Academic Doubt Classification Pipeline")
-        print("=" * 80)
+        classification = llm_classifier.classify(
+            prompt
+        )
 
-        print(f"Original Question : {original_question}")
-        print(f"Processed Question: {cleaned_question}")
-        print(f"Embedding Shape   : {question_embedding.shape}")
+        # ----------------------------------------------
+        # Confidence
+        # ----------------------------------------------
 
-        print("\nTop Retrieved Knowledge Chunks")
-        print("-" * 80)
+        confidence = retrieval_scorer.calculate(
+            accepted_chunks
+        )
 
-        for index, result in enumerate(search_results, start=1):
-
-            print(f"\nResult #{index}")
-
-            print(f"Subject      : {result['subject']}")
-            print(f"Page         : {result['page']}")
-            print(f"Distance     : {result['distance']:.4f}")
-
-            preview = result["content"][:200].replace("\n", " ")
-
-            print(f"Preview      : {preview}...")
-
-        print("\nLLM Classification")
-        print("-" * 80)
-
-        print(f"Subject       : {classification['subject']}")
-        print(f"Topic         : {classification['topic']}")
-        print(f"Subtopic      : {classification['subtopic']}")
-        print(f"Difficulty    : {classification['difficulty']}")
-        print(f"Confidence    : {classification['confidence']:.2f}")
-
-        print("=" * 80)
-
-        # --------------------------------------------------
-        # Prepare References
-        # --------------------------------------------------
+        # ----------------------------------------------
+        # References
+        # ----------------------------------------------
 
         references = []
 
-        for result in search_results:
+        for chunk in accepted_chunks:
 
             references.append({
 
-                "page": result["page"],
+                "source": chunk["source"],
 
-                "distance": round(
-                    result["distance"],
-                    4
-                )
+                "page": chunk["page"],
+
+                "similarity_score": round(
+
+                    chunk["similarity_score"],
+
+                    3
+
+                ),
+
+                "preview": chunk["text"][:150]
 
             })
 
-        # --------------------------------------------------
+        # ----------------------------------------------
+        # Retrieval Information
+        # ----------------------------------------------
+
+        retrieval = {
+
+            "retrieved_chunks": len(
+
+                retrieved_chunks
+
+            ),
+
+            "accepted_chunks": len(
+
+                accepted_chunks
+
+            ),
+
+            "similarity_threshold": SIMILARITY_THRESHOLD
+
+        }
+
+        # ----------------------------------------------
+        # Logging
+        # ----------------------------------------------
+
+        logger.info("=" * 60)
+        logger.info("Academic Classification Completed")
+        logger.info("=" * 60)
+
+        logger.info(
+
+            "Question : %s",
+
+            original_question
+
+        )
+
+        logger.info(
+
+            "Retrieved : %d",
+
+            len(retrieved_chunks)
+
+        )
+
+        logger.info(
+
+            "Accepted : %d",
+
+            len(accepted_chunks)
+
+        )
+
+        logger.info(
+
+            "Confidence : %.3f",
+
+            confidence
+
+        )
+
+        # ----------------------------------------------
         # Final Response
-        # --------------------------------------------------
+        # ----------------------------------------------
 
         return {
 
@@ -150,6 +212,40 @@ class AcademicClassifier:
 
             "classification": classification,
 
-            "references": references
+            "retrieval": retrieval,
+
+            "references": references,
+
+            "confidence": round(
+
+                confidence,
+
+                3
+
+            )
 
         }
+
+
+# ======================================================
+# Singleton
+# ======================================================
+
+academic_classifier = AcademicClassifier()
+
+
+# ======================================================
+# Module Test
+# ======================================================
+
+if __name__ == "__main__":
+
+    result = academic_classifier.classify(
+
+        "What is Deadlock?"
+
+    )
+
+    from pprint import pprint
+
+    pprint(result)

@@ -1,12 +1,23 @@
 export default function ClassificationCard({ result }) {
-  const { question, classification, references } = result;
 
-  // Remove duplicate pages
-  const pages = [...new Set(
-  references.map((ref) => ref.page)
-)].sort((a, b) => a - b);
+  const {
+    question,
+    classification,
+    references = [],
+    confidence = 0,
+  } = result;
+
+  // Remove duplicate page numbers and sort them
+  const pages = [
+    ...new Set(
+      references
+        .map((reference) => reference.page)
+        .filter((page) => page !== undefined && page !== null)
+    ),
+  ].sort((a, b) => a - b);
 
   return (
+
     <div
       className="
         w-full
@@ -19,112 +30,202 @@ export default function ClassificationCard({ result }) {
 
         bg-slate-800
 
-        p-6
+        p-8
 
         shadow-lg
       "
     >
-      {/* Question */}
+
+      {/* ---------------- Question ---------------- */}
+
       <p className="text-sm text-slate-400">
-            Question
-        </p>
+        Question
+      </p>
 
-        <h2 className="mt-1 text-2xl font-semibold text-white leading-tight">
-            {question}
-        </h2>
+      <h2
+        className="
+          mt-2
+          text-2xl
+          font-semibold
+          leading-tight
+          text-white
+        "
+      >
+        {question}
+      </h2>
 
-      <div className="my-4 border-t border-slate-700" />
+      <div className="my-6 border-t border-slate-700" />
 
-      {/* Classification */}
-      <div className="space-y-3">
+      {/* ---------------- Classification ---------------- */}
 
-        <div className="flex justify-between">
-          <span className="text-slate-400">Subject</span>
-          <span className="font-medium text-white">
-            {classification.subject}
-          </span>
-        </div>
+      <div className="space-y-4">
 
-        <div className="flex justify-between">
-          <span className="text-slate-400">Topic</span>
-          <span className="font-medium text-white">
-            {classification.topic || "—"}
-          </span>
-        </div>
+        <InfoRow
+          label="Subject"
+          value={classification.subject}
+        />
 
-        <div className="flex justify-between">
-          <span className="text-slate-400">Subtopic</span>
-          <span className="font-medium text-white">
-            {classification.subtopic || "—"}
-          </span>
-        </div>
+        <InfoRow
+          label="Topic"
+          value={classification.topic}
+        />
 
-        <div className="flex justify-between">
-          <span className="text-slate-400">Difficulty</span>
-          <span className="font-medium text-white">
-            {classification.difficulty}
-          </span>
-        </div>
+        <InfoRow
+          label="Subtopic"
+          value={classification.subtopic || "—"}
+        />
 
-        <div className="flex justify-between items-center">
-        <span className="text-slate-400">
+        <InfoRow
+          label="Difficulty"
+          value={classification.difficulty}
+        />
+
+        <div className="flex items-center justify-between">
+
+          <span className="text-slate-400">
             Confidence
-        </span>
+          </span>
 
-        <span
+          <span
             className="
-            rounded-full
-            bg-cyan-500/15
-            px-2.5
-            py-0.5
-            text-sm
-            font-semibold
-            text-cyan-400
+              rounded-full
+
+              bg-cyan-500/15
+
+              px-3
+              py-1
+
+              text-sm
+              font-semibold
+
+              text-cyan-400
             "
-        >
-            {(classification.confidence * 100).toFixed(0)}%
-        </span>
+          >
+            {(confidence * 100).toFixed(0)}%
+          </span>
+
         </div>
 
       </div>
 
       <div className="my-6 border-t border-slate-700" />
 
-      {/* References */}
+      {/* ---------------- References ---------------- */}
+
       <div>
 
-        <p className="mb-2 text-sm font-medium text-slate-400">
+        <p
+          className="
+            mb-3
+
+            text-sm
+            font-medium
+
+            text-slate-400
+          "
+        >
           References
         </p>
 
-        <div className="flex flex-wrap gap-1">
+        {
 
-          {pages.map((page) => (
-            <span
-              key={page}
-              className="
-                rounded-full
+          pages.length === 0 ? (
 
-                border
-                border-slate-600
+            <p className="text-sm text-slate-500">
 
-                bg-slate-900
+              No references available.
 
-                px-3
-                py-1
+            </p>
 
-                text-xs
+          ) : (
 
-                text-slate-300
-              "
-            >
-              Page {page}
-            </span>
-          ))}
+            <div className="flex flex-wrap gap-2">
 
-        </div>
+              {
+
+                pages.map((page) => (
+
+                  <span
+
+                    key={page}
+
+                    className="
+                      rounded-full
+
+                      border
+                      border-slate-600
+
+                      bg-slate-900
+
+                      px-3
+                      py-1
+
+                      text-xs
+
+                      text-slate-300
+
+                      transition
+
+                      hover:border-cyan-400
+                      hover:text-cyan-300
+                    "
+
+                  >
+
+                    Page {page}
+
+                  </span>
+
+                ))
+
+              }
+
+            </div>
+
+          )
+
+        }
 
       </div>
+
     </div>
+
   );
+
+}
+
+/* ===================================== */
+
+function InfoRow({ label, value }) {
+
+  return (
+
+    <div className="flex items-center justify-between">
+
+      <span className="text-slate-400">
+
+        {label}
+
+      </span>
+
+      <span
+        className="
+          max-w-[60%]
+
+          text-right
+
+          font-medium
+
+          text-white
+        "
+      >
+
+        {value || "—"}
+
+      </span>
+
+    </div>
+
+  );
+
 }

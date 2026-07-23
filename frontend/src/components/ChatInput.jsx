@@ -1,8 +1,28 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ArrowUp } from "lucide-react";
 
 export default function ChatInput({ onAsk, loading }) {
   const [question, setQuestion] = useState("");
+
+  const textareaRef = useRef(null);
+
+  // -----------------------------------------
+  // Auto Resize Textarea
+  // -----------------------------------------
+
+  function autoResize() {
+    const textarea = textareaRef.current;
+
+    if (!textarea) return;
+
+    textarea.style.height = "0px";
+
+    textarea.style.height = `${textarea.scrollHeight}px`;
+  }
+
+  // -----------------------------------------
+  // Submit
+  // -----------------------------------------
 
   function handleSubmit() {
     const text = question.trim();
@@ -10,8 +30,17 @@ export default function ChatInput({ onAsk, loading }) {
     if (!text || loading) return;
 
     onAsk(text);
+
     setQuestion("");
+
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "24px";
+    }
   }
+
+  // -----------------------------------------
+  // Keyboard
+  // -----------------------------------------
 
   function handleKeyDown(event) {
     if (event.key === "Enter" && !event.shiftKey) {
@@ -20,8 +49,19 @@ export default function ChatInput({ onAsk, loading }) {
     }
   }
 
+  // -----------------------------------------
+  // Text Change
+  // -----------------------------------------
+
+  function handleChange(event) {
+    setQuestion(event.target.value);
+
+    autoResize();
+  }
+
   return (
     <div className="border-t border-slate-800 bg-slate-900 p-5">
+
       <div
         className="
           flex
@@ -46,17 +86,30 @@ export default function ChatInput({ onAsk, loading }) {
           focus-within:ring-cyan-500/20
         "
       >
+
         <textarea
+          ref={textareaRef}
+
           rows={1}
+
           value={question}
+
           placeholder="Ask your academic doubt..."
-          onChange={(e) => setQuestion(e.target.value)}
+
+          onChange={handleChange}
+
           onKeyDown={handleKeyDown}
+
           disabled={loading}
+
           className="
             flex-1
 
             resize-none
+
+            overflow-y-auto
+
+            max-h-48
 
             bg-transparent
 
@@ -76,7 +129,12 @@ export default function ChatInput({ onAsk, loading }) {
 
         <button
           onClick={handleSubmit}
-          disabled={loading || !question.trim()}
+
+          disabled={
+            loading ||
+            !question.trim()
+          }
+
           className="
             flex
 
@@ -87,6 +145,8 @@ export default function ChatInput({ onAsk, loading }) {
 
             items-center
             justify-center
+
+            self-end
 
             rounded-full
 
@@ -107,9 +167,14 @@ export default function ChatInput({ onAsk, loading }) {
             disabled:hover:scale-100
           "
         >
-          <ArrowUp size={18} strokeWidth={2.5} />
+          <ArrowUp
+            size={18}
+            strokeWidth={2.5}
+          />
         </button>
+
       </div>
+
     </div>
   );
 }

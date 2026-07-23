@@ -1,6 +1,27 @@
-import fitz
+"""
+PDF Processor
+
+Reads academic PDF documents and converts them into
+structured knowledge chunks for indexing.
+
+Responsibilities
+----------------
+1. Read PDF files.
+2. Extract text page-by-page.
+3. Split text into semantic chunks.
+4. Attach metadata to every chunk.
+
+This module does NOT:
+- generate embeddings
+- build the vector database
+- perform retrieval
+"""
+
 from pathlib import Path
+
+import fitz
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+
 from app.config import (
     CHUNK_SIZE,
     CHUNK_OVERLAP
@@ -9,78 +30,130 @@ from app.config import (
 
 class PDFProcessor:
     """
-    Reads a PDF and converts it into structured knowledge chunks.
+    Processes PDF documents into structured
+    knowledge chunks.
     """
 
-    def __init__(
-        self,
-        chunk_size: int = 500,
-        chunk_overlap: int = 100
-    ):
+    def __init__(self):
+        """
+        Initialize the text splitter using
+        application configuration.
+        """
 
         self.text_splitter = RecursiveCharacterTextSplitter(
 
             chunk_size=CHUNK_SIZE,
 
-            chunk_overlap=CHUNK_OVERLAP
+            chunk_overlap=CHUNK_OVERLAP,
+
+            separators=[
+
+                "\n\n",
+
+                "\n",
+
+                ". ",
+
+                " ",
+
+                ""
+
+            ]
 
         )
 
-    # ------------------------------------
+    # ======================================================
     # Public Method
-    # ------------------------------------
+    # ======================================================
 
-    def process(self, pdf_path: str):
+    def process(
+        self,
+        pdf_path: str | Path
+    ) -> list[dict]:
+        """
+        Process a PDF into structured chunks.
+
+        Parameters
+        ----------
+        pdf_path : str | Path
+
+        Returns
+        -------
+        list[dict]
+            List of knowledge chunks.
+        """
 
         pdf_path = Path(pdf_path)
 
         subject = pdf_path.stem.replace("_", " ")
-        source_file = pdf_path.name
 
-        document = fitz.open(pdf_path)
+        source = pdf_path.name
 
         knowledge_chunks = []
 
-        for page_number, page in enumerate(document, start=1):
+        with fitz.open(pdf_path) as document:
 
-            page_text = page.get_text()
+            for page_number, page in enumerate(
+                document,
+                start=1
+            ):
 
-            if not page_text.strip():
-                continue
+                page_text = page.get_text().strip()
 
-            page_chunks = self.text_splitter.split_text(page_text)
+                if not page_text:
+                    continue
 
-            for index, chunk in enumerate(page_chunks, start=1):
+                chunks = self.text_splitter.split_text(
+                    page_text
+                )
 
-                knowledge_chunks.append({
+                for chunk in chunks:
 
-                    "chunk_id": f"{subject}_{page_number}_{index}",
+                    chunk = chunk.strip()
 
-                    "subject": subject,
+                    # Skip empty or tiny chunks
+                    if len(chunk) < 30:
+                        continue
 
-                    "source_file": source_file,
+                    knowledge_chunks.append({
 
-                    "page": page_number,
+                        "subject": subject,
 
-                    "content": chunk,
+                        "source": source,
 
-                    "content_length": len(chunk)
+                        "page": page_number,
 
-                })
+                        "text": chunk,
 
-        document.close()
+                        "text_length": len(chunk)
+
+                    })
 
         return knowledge_chunks
 
+
+# ======================================================
+# Module Test
+# ======================================================
 
 if __name__ == "__main__":
 
     processor = PDFProcessor()
 
-    chunks = processor.process("app/data/pdfs/Big Data.pdf")
+    chunks = processor.process(
+
+        "app/data/pdfs/Big Data.pdf"
+
+    )
+
+    print("=" * 60)
 
     print(f"Total Chunks : {len(chunks)}")
 
-    print("-" * 60)
+    print("=" * 60)
 
-    print(chunks[100])
+    if chunks:
+
+        from pprint import pprint
+
+        pprint(chunks[0])
